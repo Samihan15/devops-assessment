@@ -2,9 +2,10 @@ const express = require("express");
 
 const app = express()
 
-app.get('/',(res,req)=>{
-    res.json({msg : "Hello World !!!"});
+app.get('/', (req, res) => {
+    res.json({ msg: "Hello World !!!" });
 });
+
 
 const PORT = process.env.PORT || 3000;
 
