@@ -6,6 +6,11 @@ metadata:
     app: node-app
 spec:
   replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: node-app
@@ -16,9 +21,16 @@ spec:
     spec:
       containers:
         - name: node-app
-          image: samihannandedkar/node-project:latest 
+          image: samihannandedkar/node-project:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 3000
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 5
           resources:
             requests:
               cpu: "100m"
@@ -26,7 +38,6 @@ spec:
             limits:
               cpu: "250m"
               memory: "256Mi"
-          imagePullPolicy: Always
 
 ---
 apiVersion: v1
@@ -40,4 +51,4 @@ spec:
   ports:
     - port: 3000
       targetPort: 3000
-      nodePort: 30007   # optional (Minikube assigns if removed)
+      nodePort: 30007
