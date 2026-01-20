@@ -5,7 +5,7 @@ metadata:
   labels:
     app: node-app
 spec:
-  replicas: 2
+  replicas: 1
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -21,8 +21,8 @@ spec:
     spec:
       containers:
         - name: node-app
-          image: samihannandedkar/node-project:latest
-          imagePullPolicy: Always
+          image: node-project:latest
+          imagePullPolicy: ifNotPresent
           ports:
             - containerPort: 3000
           readinessProbe:
@@ -33,11 +33,12 @@ spec:
             periodSeconds: 5
           resources:
             requests:
-              cpu: "100m"
-              memory: "128Mi"
+              cpu: "50m"
+              memory: "64Mi"
             limits:
-              cpu: "250m"
-              memory: "256Mi"
+              cpu: "150m"
+              memory: "128Mi"
+
 
 ---
 apiVersion: v1
