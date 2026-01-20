@@ -30,13 +30,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Ensure KIND cluster exists
-        shell: cmd
-        run: |
-          kind get clusters | findstr dev-cluster || kind create cluster --name dev-cluster --image kindest/node:v1.29.2
-
-
-
       - name: Use KIND context
         run: kubectl config use-context kind-dev-cluster
 
