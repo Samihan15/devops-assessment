@@ -12,17 +12,24 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Docker login
-        run: |
-          echo ${{ secrets.DOCKER_PASSWORD }} | docker login -u ${{ secrets.DOCKER_USERNAME }} --password-stdin
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }} # Use a GitHub secret for security
 
-      - name: Build Docker image
-        run: |
-          docker build -t ${{ secrets.DOCKER_USERNAME }}/node-project:latest .
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Push image to Docker Hub
-        run: |
-          docker push ${{ secrets.DOCKER_USERNAME }}/node-project:latest
+      - name: Build and push production image
+        uses: docker/build-push-action@v6
+        with:
+          context: . # The directory containing your Dockerfile
+          file: ./Dockerfile
+          push: true # Set to true to push the image to the registry
+          tags: ${{ secrets.DOCKER_USERNAME }}/node-project:latest # Tag format: namespace/repository:tag
+          cache-from: type=gha # Use GitHub Actions cache for faster builds
+          cache-to: type=gha,mode=max
 
   deploy:
     runs-on: [self-hosted, windows, x64]
