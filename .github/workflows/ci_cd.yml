@@ -1,39 +1,64 @@
-name: Build, push image and deploy to KIND
+name: CI/CD to GKE
 
 on:
   push:
-    branches: ["main"]
+    branches:
+      - main
+
+env:
+  IMAGE_NAME: ${{secrets.DOCKER_USERNAME}}/myapp
 
 jobs:
   build:
+    name: Build & Push Image
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Docker login
-        run: |
-          echo ${{ secrets.DOCKER_PASSWORD }} | docker login -u ${{ secrets.DOCKER_USERNAME }} --password-stdin
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build Docker image
-        run: |
-          docker build -t ${{ secrets.DOCKER_USERNAME }}/node-project:latest .
-
-      - name: Push image
-        run: |
-          docker push ${{ secrets.DOCKER_USERNAME }}/node-project:latest
+      - name: Build & Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.IMAGE_NAME }}:latest
 
   deploy:
-    runs-on: self-hosted
+    name: Deploy to GKE
     needs: build
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Use KIND context
-        run: kubectl config use-context kind-dev-cluster
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - name: Deploy to Kubernetes
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ secrets.GKE_CLUSTER_NAME }}
+          location: ${{ secrets.GKE_ZONE }}
+
+      - name: Replace image
         run: |
-          kubectl apply -f deployment.yaml
-          kubectl rollout status deployment/node-app
+          sed -i "s|IMAGE_PLACEHOLDER|${{ env.IMAGE_NAME }}:${{ github.sha }}|g" k8s/deployment.yml
+
+      - name: Deploy to cluster
+        run: |
+          kubectl apply -f k8s/
