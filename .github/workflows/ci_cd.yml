@@ -1,4 +1,4 @@
-name: CI/CD to GKE
+name: CI/CD Node App to GKE
 
 on:
   push:
@@ -6,34 +6,148 @@ on:
       - main
 
 env:
-  IMAGE_NAME: ${{secrets.DOCKER_USERNAME}}/myapp
+  IMAGE_NAME: ${{ secrets.DOCKER_USERNAME }}/myapp
 
 jobs:
+
+  # 1. SonarCloud Code Scan
+  sonarcloud:
+    name: SonarCloud Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@v2
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}
+            -Dsonar.organization=${{ secrets.SONAR_ORG }}
+            -Dsonar.host.url=https://sonarcloud.io
+
+      - name: Save SonarCloud metadata
+        run: |
+          echo "Project: ${{ secrets.SONAR_PROJECT_KEY }}" > sonar-summary.txt
+          echo "Organization: ${{ secrets.SONAR_ORG }}" >> sonar-summary.txt
+          echo "Commit: ${{ github.sha }}" >> sonar-summary.txt
+
+      - name: Upload SonarCloud artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonarcloud-report
+          path: sonar-summary.txt
+
+  # 2. Build Node App → dist/
   build:
-    name: Build & Push Image
+    name: Build Node App
+    needs: sonarcloud
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build application (dist)
+        run: npm run build
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: node-dist
+          path: dist/
+
+  # 3. Docker Build (from dist)
+  docker-build:
+    name: Build Docker Image
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: node-dist
+          path: dist/
+
+      - name: Build Docker image
+        run: |
+          docker build -t ${{ env.IMAGE_NAME }}:${{ github.sha }} .
+
+  # 4. Trivy Image Scan
+  trivy:
+    name: Trivy Image Scan
+    needs: docker-build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trivy scan (SARIF)
+        uses: aquasecurity/trivy-action@v0.20.0
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          format: sarif
+          output: trivy.sarif
+          severity: CRITICAL,HIGH
+          exit-code: 1
+
+      - name: Trivy scan (Readable)
+        uses: aquasecurity/trivy-action@v0.20.0
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          format: table
+          output: trivy-report.txt
+          severity: CRITICAL,HIGH
+          exit-code: 1
+
+      - name: Upload Trivy artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-security-report
+          path: |
+            trivy.sarif
+            trivy-report.txt
+
+      - name: Upload SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy.sarif
+
+  # 5. Push Image to Docker Hub
+  push:
+    name: Push Docker Image
+    needs: trivy
+    runs-on: ubuntu-latest
+
+    steps:
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build & Push Docker Image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: |
-            ${{ env.IMAGE_NAME }}:${{ github.sha }}
-            ${{ env.IMAGE_NAME }}:latest
+      - name: Push Docker image
+        run: |
+          docker tag ${{ env.IMAGE_NAME }}:${{ github.sha }} ${{ env.IMAGE_NAME }}:latest
+          docker push ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          docker push ${{ env.IMAGE_NAME }}:latest
 
+  # 6. Deploy to GKE
   deploy:
     name: Deploy to GKE
-    needs: build
+    needs: push
     runs-on: ubuntu-latest
 
     steps:
@@ -55,7 +169,7 @@ jobs:
           cluster_name: ${{ secrets.GKE_CLUSTER_NAME }}
           location: ${{ secrets.GKE_ZONE }}
 
-      - name: Replace image
+      - name: Replace image in manifest
         run: |
           sed -i "s|IMAGE_PLACEHOLDER|${{ env.IMAGE_NAME }}:${{ github.sha }}|g" k8s/deployment.yml
 
