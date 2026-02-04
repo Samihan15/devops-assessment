@@ -68,9 +68,9 @@ jobs:
           name: node-dist
           path: dist/
 
-  # 3. Docker Build (from dist)
-  docker-build:
-    name: Build Docker Image
+          
+  docker-security:
+    name: Build, Scan & Push Image
     needs: build
     runs-on: ubuntu-latest
 
@@ -83,19 +83,18 @@ jobs:
           name: node-dist
           path: dist/
 
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
       - name: Build Docker image
         run: |
           docker build -t ${{ env.IMAGE_NAME }}:${{ github.sha }} .
 
-  # 4. Trivy Image Scan
-  trivy:
-    name: Trivy Image Scan
-    needs: docker-build
-    runs-on: ubuntu-latest
-
-    steps:
       - name: Trivy scan (SARIF)
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.33.1
         with:
           image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }}
           format: sarif
@@ -104,7 +103,7 @@ jobs:
           exit-code: 1
 
       - name: Trivy scan (Readable)
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.33.1
         with:
           image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }}
           format: table
@@ -125,25 +124,12 @@ jobs:
         with:
           sarif_file: trivy.sarif
 
-
-  # 5. Push Image to Docker Hub
-  push:
-    name: Push Docker Image
-    needs: trivy
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
       - name: Push Docker image
         run: |
           docker tag ${{ env.IMAGE_NAME }}:${{ github.sha }} ${{ env.IMAGE_NAME }}:latest
           docker push ${{ env.IMAGE_NAME }}:${{ github.sha }}
           docker push ${{ env.IMAGE_NAME }}:latest
+
 
   # 6. Deploy to GKE
   deploy:
