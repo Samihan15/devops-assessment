@@ -95,7 +95,7 @@ jobs:
 
     steps:
       - name: Trivy scan (SARIF)
-        uses: aquasecurity/trivy-action@v0.20.0
+        uses: aquasecurity/trivy-action@v0.28.0
         with:
           image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }}
           format: sarif
@@ -104,7 +104,7 @@ jobs:
           exit-code: 1
 
       - name: Trivy scan (Readable)
-        uses: aquasecurity/trivy-action@v0.20.0
+        uses: aquasecurity/trivy-action@v0.28.0
         with:
           image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }}
           format: table
@@ -124,6 +124,7 @@ jobs:
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy.sarif
+
 
   # 5. Push Image to Docker Hub
   push:
