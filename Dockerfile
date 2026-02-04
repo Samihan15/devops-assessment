@@ -2,12 +2,18 @@ FROM node:18-alpine
 
 WORKDIR /myapp
 
+# Copy dependency files
 COPY package*.json ./
 
-RUN npm install
+# Install dependencies
+RUN npm install --production
 
+# Copy source code
 COPY . .
+
+# Build the app (creates dist/)
+RUN npm run build
+
 EXPOSE 3000
 
-ENTRYPOINT [ "npm","start" ]
-
+CMD ["npm", "start"]
