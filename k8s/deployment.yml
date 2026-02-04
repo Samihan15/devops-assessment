@@ -12,11 +12,14 @@ spec:
       labels:
         app: myapp
     spec:
+      imagePullSecrets:
+        - name: regcred
       containers:
         - name: myapp
           image: IMAGE_PLACEHOLDER
           ports:
             - containerPort: 8080
+
 
 ---
 
