@@ -134,7 +134,7 @@ jobs:
   # 6. Deploy to GKE
   deploy:
     name: Deploy to GKE
-    needs: push
+    needs: docker-security
     runs-on: ubuntu-latest
 
     steps:
