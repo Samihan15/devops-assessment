@@ -1,17 +1,15 @@
 FROM node:20.20.0-alpine
 
+RUN npm install -g npm@11.6.4
+
 WORKDIR /myapp
 
-# Copy dependency files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm install --production
+RUN npm ci --omit=dev
 
-# Copy source code
 COPY . .
 
-# Build the app (creates dist/)
 RUN npm run build
 
 EXPOSE 3000
