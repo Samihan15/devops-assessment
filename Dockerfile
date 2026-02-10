@@ -1,6 +1,6 @@
 FROM node:20.20.0-alpine
 
-RUN npm install -g npm@11.6.4
+RUN npm install -g npm@latest
 
 WORKDIR /myapp
 
