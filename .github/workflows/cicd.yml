@@ -7,11 +7,8 @@ on:
 
 env:
   IMAGE_NAME: ${{ secrets.DOCKER_USERNAME }}/myapp
-
 jobs:
-  # --------------------------------------------------
   # 1. SonarCloud Code Scan
-  # --------------------------------------------------
   sonarcloud:
     name: SonarCloud Scan
     runs-on: ubuntu-latest
@@ -31,9 +28,7 @@ jobs:
             -Dsonar.organization=${{ secrets.SONAR_ORG }}
             -Dsonar.host.url=https://sonarcloud.io
 
-  # --------------------------------------------------
   # 2. Build Node App → dist/
-  # --------------------------------------------------
   build:
     name: Build Node App
     needs: sonarcloud
@@ -45,7 +40,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
 
       - name: Install dependencies
         run: npm install
@@ -59,12 +54,35 @@ jobs:
           name: node-dist
           path: dist/
 
-  # --------------------------------------------------
-  # 3. Build & Push Docker Image
-  # --------------------------------------------------
+  # 3. Snyk Dependency Scan
+  snyk-code:
+    name: Snyk Dependency Scan
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run Snyk dependency scan
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          command: test
+          args: --severity-threshold=high
+
+  # 4. Build, Scan & Push Docker Image
   docker:
     name: Build & Push Docker Image
-    needs: build
+    needs: snyk-code
     runs-on: ubuntu-latest
 
     steps:
@@ -86,15 +104,22 @@ jobs:
         run: |
           docker build -t ${{ env.IMAGE_NAME }}:${{ github.sha }} .
 
+      - name: Run Snyk Docker image scan
+        uses: snyk/actions/docker@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          image: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          args: --severity-threshold=high
+
       - name: Push Docker image
         run: |
           docker tag ${{ env.IMAGE_NAME }}:${{ github.sha }} ${{ env.IMAGE_NAME }}:latest
           docker push ${{ env.IMAGE_NAME }}:${{ github.sha }}
           docker push ${{ env.IMAGE_NAME }}:latest
 
-  # --------------------------------------------------
-  # 4. Deploy to GKE
-  # --------------------------------------------------
+  # 5. Deploy to GKE
+
   deploy:
     name: Deploy to GKE
     needs: docker
