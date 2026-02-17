@@ -1,25 +1,22 @@
-# Stage 1 - Build
-FROM node:20 AS builder
+# Use slim instead of alpine (better compatibility in GKE)
+FROM node:20.12-slim
 
 WORKDIR /app
 
+# Upgrade npm to patched version
+RUN npm install -g npm@11.6.4
+
+# Copy only package files first (better layer caching)
 COPY package*.json ./
-RUN npm install
 
+# Install only production deps
+RUN npm install --omit=dev
+
+# Copy source
 COPY . .
-RUN npm run build
 
-
-# Stage 2 - Production Image
-FROM node:20-alpine
-
-WORKDIR /app
-
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/package*.json ./
-
-RUN npm install --production
-
+# Expose app port
 EXPOSE 3000
 
-CMD ["node", "dist/index.js"]
+# Run app
+CMD ["node", "index.js"]
