@@ -1,0 +1,11 @@
+replicaCount: 4
+
+image:
+  repository: samihan/myapp
+  tag: prod
+
+service:
+  type: ClusterIP
+
+ingress:
+  enabled: true

@@ -4,15 +4,17 @@ on:
   push:
     branches:
       - main
+      - qa
+      - release   # optional for production
 
 env:
   IMAGE_NAME: ${{ secrets.DOCKER_USERNAME }}/myapp
+
 jobs:
-  # 1. SonarCloud Code Scan
+
   sonarcloud:
     name: SonarCloud Scan
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
         with:
@@ -28,7 +30,7 @@ jobs:
             -Dsonar.organization=${{ secrets.SONAR_ORG }}
             -Dsonar.host.url=https://sonarcloud.io
 
-  # 2. Build Node App → dist/
+
   build:
     name: Build Node App
     needs: sonarcloud
@@ -45,7 +47,7 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Build application (dist)
+      - name: Build application
         run: npm run build
 
       - name: Upload dist artifact
@@ -54,8 +56,8 @@ jobs:
           name: node-dist
           path: dist/
 
-  # 3. Snyk Dependency Scan
-  snyk-code:
+
+  snyk-dependency:
     name: Snyk Dependency Scan
     needs: build
     runs-on: ubuntu-latest
@@ -79,10 +81,10 @@ jobs:
           command: test
           args: --severity-threshold=high
 
-  # 4. Build, Scan & Push Docker Image
+
   docker:
     name: Build & Push Docker Image
-    needs: snyk-code
+    needs: snyk-dependency
     runs-on: ubuntu-latest
 
     steps:
@@ -118,15 +120,19 @@ jobs:
           docker push ${{ env.IMAGE_NAME }}:${{ github.sha }}
           docker push ${{ env.IMAGE_NAME }}:latest
 
-  # 5. Deploy to GKE
 
   deploy:
-    name: Deploy to GKE
+    name: Deploy to GKE (Helm)
     needs: docker
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.14.0
 
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
@@ -144,10 +150,34 @@ jobs:
           cluster_name: ${{ secrets.GKE_CLUSTER_NAME }}
           location: ${{ secrets.GKE_ZONE }}
 
-      - name: Replace image in manifest
+      # 🔹 Branch → Environment Mapping
+      - name: Set environment variables
         run: |
-          sed -i "s|IMAGE_PLACEHOLDER|${{ env.IMAGE_NAME }}:${{ github.sha }}|g" k8s/deployment.yml
+          BRANCH=${GITHUB_REF##*/}
+          if [ "$BRANCH" = "release" ]; then
+            echo "ENV=prod" >> $GITHUB_ENV
+            echo "VALUES_FILE=values-prod.yaml" >> $GITHUB_ENV
+            echo "NAMESPACE=production" >> $GITHUB_ENV
+          elif [ "$BRANCH" = "qa" ]; then
+            echo "ENV=qa" >> $GITHUB_ENV
+            echo "VALUES_FILE=values-qa.yaml" >> $GITHUB_ENV
+            echo "NAMESPACE=qa" >> $GITHUB_ENV
+          else
+            echo "ENV=dev" >> $GITHUB_ENV
+            echo "VALUES_FILE=values-dev.yaml" >> $GITHUB_ENV
+            echo "NAMESPACE=dev" >> $GITHUB_ENV
+          fi
 
-      - name: Deploy to cluster
+      - name: Lint Helm Chart
+        run: helm lint ./myapp
+
+      - name: Deploy using Helm
         run: |
-          kubectl apply -f k8s/
+          helm upgrade --install myapp-${{ env.ENV }} ./myapp \
+            -f myapp/${{ env.VALUES_FILE }} \
+            --set image.repository=${{ env.IMAGE_NAME }} \
+            --set image.tag=${{ github.sha }} \
+            --namespace ${{ env.NAMESPACE }} \
+            --create-namespace \
+            --atomic \
+            --wait

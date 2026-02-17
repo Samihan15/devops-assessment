@@ -1,0 +1,49 @@
+- name: Deploy Node App
+  hosts: target
+  become: yes
+  vars:
+    app_dir: /var/www/nodeapp
+    artifact_path: build/app.tar.gz
+
+  tasks:
+
+    - name: Ensure app directory exists
+      file:
+        path: "{{ app_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Install Node.js if not present
+      apt:
+        name: nodejs
+        state: present
+        update_cache: yes
+
+    - name: Install PM2 globally
+      npm:
+        name: pm2
+        global: yes
+        state: present
+
+    - name: Copy artifact to VM
+      copy:
+        src: "{{ artifact_path }}"
+        dest: "{{ app_dir }}/app.tar.gz"
+      notify: Restart App
+
+    - name: Extract artifact
+      unarchive:
+        src: "{{ app_dir }}/app.tar.gz"
+        dest: "{{ app_dir }}"
+        remote_src: yes
+      notify: Restart App
+
+    - name: Run deploy script
+      command: bash deploy.sh
+      args:
+        chdir: "{{ app_dir }}"
+      notify: Restart App
+
+  handlers:
+    - name: Restart App
+      command: pm2 restart app || pm2 start app.js --name app
