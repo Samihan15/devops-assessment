@@ -23,8 +23,11 @@ jobs:
 
       - name: Build project
         run: |
-          mkdir build
-          tar -czf build/app.tar.gz .
+            mkdir -p build
+            tar --exclude='./build' \
+                --exclude='./.git' \
+                -czf build/app.tar.gz .
+
 
       - name: Setup SSH
         run: |
