@@ -40,6 +40,8 @@ jobs:
 
       - name: Run Ansible Playbook
         run: |
-          ansible-playbook deploy/deploy.yml \
-            -i deploy/inventory.ini \
-            --extra-vars "host=${{ secrets.VM_HOST }}"
+            ansible-playbook deploy/deploy.yml \
+            -i "${{ secrets.VM_HOST }}," \
+            --user "${{ secrets.VM_USER }}" \
+            --private-key ~/.ssh/id_rsa
+
